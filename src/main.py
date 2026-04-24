@@ -15,8 +15,27 @@ def big_prompt(prompt_str, functions_list) -> str:
     prompt += "\nOutput: "
     return prompt
 
-def prompt_for_param(function, big_prompt):
-    prompt = ""
+def prompt_for_param(base_prompt, json_part, function):
+    prompt = "For this function:\n"
+    prompt += function.fn_to_prompt()
+    prompt += "\nReturn ONLY valid JSON in the format:\n"
+    prompt += '{"prompt": "...", "name": "...", "parameters": { ... } }\n'
+    prompt += 'for example:\n'
+    prompt += 'User: "What is the sum of 2 and 3"\n'
+    prompt += ('Output: {"prompt": "What is the sum of 2 and 3", '
+               '"name": "fn_add_numbers", "parameters": {"a": 2.0, "b": 3.0}}')
+    prompt += "\nUser: "
+    prompt += base_prompt
+    prompt += "\n"
+    prompt += "Output: "
+    prompt += json_part
+    
+    return prompt
+
+
+
+
+
 
 
 def get_function_from_name(name, functions_list):
@@ -41,74 +60,95 @@ def all_functions_names(functions):
        
 
 def main():
-    #try:
-        
-    llm = Small_LLM_Model(device="cpu")
-    with open("data/input/functions_definition.json", "r", encoding="utf-8") as functions_file:
-        load_functions = json.load(functions_file)
-        
-    with open("data/input/function_calling_tests.json",  "r", encoding="utf-8") as prompt_file:
-        load_calls = json.load(prompt_file)
-    functions_list = []
-    for idx, data in enumerate(load_functions):
-        function = Function.create_from_dict(data, idx)
-        functions_list.append(function)
+    try:
+        llm = Small_LLM_Model(device="cpu")
+
+        with open("data/input/functions_definition.json", "r", encoding="utf-8") as functions_file:
+            load_functions = json.load(functions_file)
+        with open("data/input/function_calling_tests.json",  "r", encoding="utf-8") as prompt_file:
+            load_calls = json.load(prompt_file)
+
+        functions_list = []
+        for idx, data in enumerate(load_functions):
+            function = Function.create_from_dict(data, idx)
+            functions_list.append(function)
+
+        for call in load_calls:
+            prompt = call.get("prompt")
+            full_prompt = big_prompt(prompt, functions_list)
+            tokens = llm.encode(full_prompt).tolist()[0]
+            generated_tokens = []
+            generated_name = ""
+            allowed_names = all_functions_names(functions_list)
+
+            for i in range(10):
+                logits = llm.get_logits_from_input_ids(tokens + generated_tokens)
+                masked_logits = len(logits) * [-inf]
+
+                allowed_tokens = [llm.encode(name).tolist()[0] for name in allowed_names]
+
+
+                for tokens_list in allowed_tokens:
+                    if len(tokens_list) > i:
+                        masked_logits[tokens_list[i]] = logits[tokens_list[i]]
+                    #for token in tokens_list:
+                        #masked_logits[token] = logits[token]
+                #print(allowed_tokens)
+
+                max_logit = float(-inf)
+                max_idx = -inf
+                for idx, logit in enumerate(masked_logits):
+                    if logit > max_logit:
+                        max_logit = logit
+                        max_idx = idx
+
+                generated_tokens.append(max_idx)
+                generated_name = str(llm.decode(generated_tokens)).strip()
+
+                new_allowed_names = []
+                for name in allowed_names:
+                    if name.startswith(generated_name):
+                        new_allowed_names.append(name)
+                if len(new_allowed_names) == 1:
+                    generated_name = new_allowed_names[0]
+                allowed_names = new_allowed_names
+
+                if generated_name in allowed_names:
+                    break
+
+            selected_function = get_function_from_name(generated_name, functions_list)
+            print(selected_function.to_json(prompt))
+            for index, key in enumerate(selected_function.parameters):
+                json_part = selected_function.to_json_parts(prompt, index)
+                full_prompt_paramaateres = prompt_for_param(prompt, json_part, selected_function)
+                print(full_prompt_paramaateres)
+
+                tokens = llm.encode(full_prompt_paramaateres).tolist()[0]
+                generated_tokens = []
+                generated_name = ""
+                
+                for i in range(10):
+                    logits = llm.get_logits_from_input_ids(tokens + generated_tokens)
+
+                    max_logit = float(-inf)
+                    max_idx = -inf
+                    for idx, logit in enumerate(logits):
+                        if logit > max_logit:
+                            max_logit = logit
+                            max_idx = idx
+
+                    generated_tokens.append(max_idx)
+                    generated_name = str(llm.decode(generated_tokens)).strip()
+                
+                    print(generated_name)
+                selected_function.parameters[key] = generated_name
+
+
+
+                    
+
+
             
-    for call in load_calls:
-        prompt = call.get("prompt")
-        full_prompt = big_prompt(prompt, functions_list)
-        tokens = llm.encode(full_prompt).tolist()[0]
-        generated_tokens = []
-        generated_name = ""
-        allowed_names = all_functions_names(functions_list)
-        print(prompt)
-        for i in range(10):
-            #print(llm.decode(tokens + generated_tokens))
-            logits = llm.get_logits_from_input_ids(tokens + generated_tokens)
-            max_logit = float(-inf)
-            max_idx = -inf
-            masked_logits = len(logits) * [-inf]
-            allowed_tokens = [llm.encode(name).tolist()[0] for name in allowed_names]
-            for tokens_list in allowed_tokens:
-                if len(tokens_list) > i:
-                    masked_logits[tokens_list[i]] = logits[tokens_list[i]]
-                #for token in tokens_list:
-                    #masked_logits[token] = logits[token]
-            #print(allowed_tokens)
-            for idx, logit in enumerate(masked_logits):
-                if logit > max_logit:
-                    max_logit = logit
-                    max_idx = idx
-            generated_tokens.append(max_idx)
-            generated_name = str(llm.decode(generated_tokens)).strip()
-            #print("1", generated_name)
-            new_allowed_names = []
-            for name in allowed_names:
-                if name.startswith(generated_name):
-                    new_allowed_names.append(name)
-            if len(new_allowed_names) == 1:
-                generated_name = new_allowed_names[0]
-            #print("2", generated_name)
-            
-            allowed_names = new_allowed_names
-
-            if generated_name in allowed_names:
-                break
-            
-            
-            #print(generated_tokens)
-        selected_function = get_function_from_name(generated_name, functions_list)
-        
-        print(selected_function.to_json())
-        #last_prompt = prompt_for_param(prompt, generated_name)  
-
-
-
-         
-        #print(tokens)
-    
-    #except Exception as exc:
-        #print(f"Unexpected error: {exc}")
-       # return 
-
+    except Exception as exc:
+        print(f"Unexpected error: {exc}")
     return 
