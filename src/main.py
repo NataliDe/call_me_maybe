@@ -24,9 +24,11 @@ def prompt_for_param(base_prompt, json_part, function):
     prompt += 'User: "What is the sum of 2 and 3"\n'
     prompt += ('Output: {"prompt": "What is the sum of 2 and 3", '
                '"name": "fn_add_numbers", "parameters": {"a": 2.0, "b": 3.0}}')
-    prompt += "\nUser: "
+
+
+    prompt += "\n\nUser: \""
     prompt += base_prompt
-    prompt += "\n"
+    prompt += "\"\n"
     prompt += "Output: "
     prompt += json_part
     
@@ -57,6 +59,69 @@ def all_functions_names(functions):
     for function in functions:
         all_names.append(function.name)
     return all_names
+
+def strip_value(val):
+    value = str(val)
+    value = value.strip("")
+    value = value.strip()
+    return value
+
+def convert_value(val, param_type):
+    value = strip_value(val)
+    if param_type == "number":
+        return float(value)
+    if param_type == "boolean":
+        return bool(value)
+    return value
+
+def is_float(gener_text):
+    try:
+        int(gener_text)
+        return False
+    except Exception:
+        try:
+            float(gener_text)
+            return True
+        except Exception:
+            return False
+
+
+def argument_is_finished(generated_text, param_type):
+    if param_type == "number":
+        return is_float(generated_text)
+    if param_type == "boolean":
+        return generated_text in ["true", "false"]
+    return generated_text.endswith('"')
+    
+
+
+
+def generate_value(llm, full_prompt_paramaateres, param_type):
+    tokens = llm.encode(full_prompt_paramaateres).tolist()[0]
+
+    max_tokens = 10
+    generated_tokens = []
+
+
+    for _ in range(max_tokens):
+        logits = llm.get_logits_from_input_ids(tokens + generated_tokens) 
+        print(llm.decode(tokens + generated_tokens))
+
+        max_logit = float(-inf)
+        max_idx = -inf
+        for idx, logit in enumerate(logits):
+            if logit > max_logit:
+                max_logit = logit
+                max_idx = idx 
+
+        
+        generated_tokens.append(max_idx)
+        generated_text = str(llm.decode(generated_tokens))
+
+        if argument_is_finished(generated_text, param_type):
+            break
+ 
+    return (str(llm.decode(generated_tokens)).strip())
        
 
 def main():
@@ -117,35 +182,23 @@ def main():
                     break
 
             selected_function = get_function_from_name(generated_name, functions_list)
-            print(selected_function.to_json(prompt))
+            #print(selected_function.to_json(prompt))
+
+
             for index, key in enumerate(selected_function.parameters):
+                #print(key)
                 json_part = selected_function.to_json_parts(prompt, index)
                 full_prompt_paramaateres = prompt_for_param(prompt, json_part, selected_function)
-                print(full_prompt_paramaateres)
+                #print(full_prompt_paramaateres)
 
-                tokens = llm.encode(full_prompt_paramaateres).tolist()[0]
-                generated_tokens = []
-                generated_name = ""
+                param_type = selected_function.parameters_type.get(key, "string")
+                generated_value = generate_value(llm, full_prompt_paramaateres, param_type)
+                #print(generated_value)
+
+
                 
-                for i in range(10):
-                    logits = llm.get_logits_from_input_ids(tokens + generated_tokens)
-
-                    max_logit = float(-inf)
-                    max_idx = -inf
-                    for idx, logit in enumerate(logits):
-                        if logit > max_logit:
-                            max_logit = logit
-                            max_idx = idx
-
-                    generated_tokens.append(max_idx)
-                    generated_name = str(llm.decode(generated_tokens)).strip()
-                
-                    print(generated_name)
-                selected_function.parameters[key] = generated_name
-
-
-
-                    
+                #selected_function.parameters[key] = convert_value(generated_value, param_type)
+                #print(selected_function.to_json(prompt))
 
 
             

@@ -10,7 +10,7 @@ class Function:
         self.returns = returns
 
     def fn_to_prompt(self):
-        return (f"{self.name} - {self.description} Parameters: {str(self.parameters_type)}")
+        return (f"{self.name} - {self.description} Parameters: {self.parameters_type}")
 
     @staticmethod
     def param_part(params, idx):
@@ -32,6 +32,12 @@ class Function:
         second_part = self.param_part(self.parameters, idx)
         return first_part + second_part
 
+    def to_dict(self,prompt):
+        return{
+            "prompt": prompt,
+            "name": self.name,
+            "parameters": self.parameters
+            } 
 
     def return_names(self):
         return self.name
