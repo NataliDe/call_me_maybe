@@ -13,11 +13,13 @@ class Function:
         return (f"{self.name} - {self.description} Parameters: {self.parameters_type}")
 
     @staticmethod
-    def param_part(params, idx):
+    def param_part(params, types, idx):
         params_str = ', "parameters": {'
         for index, key in enumerate(params):
             if index <= idx:
                 params_str += f'"{key}": '
+            if types[key] == 'string':
+                params_str += '"'
             if index < idx:
                 value = params[key]
                 params_str += f'"{value}", '
@@ -29,7 +31,7 @@ class Function:
             "prompt": prompt,
             "name": self.name
         })).strip('}')
-        second_part = self.param_part(self.parameters, idx)
+        second_part = self.param_part(self.parameters, self.parameters_type, idx)
         return first_part + second_part
 
     def to_dict(self,prompt):

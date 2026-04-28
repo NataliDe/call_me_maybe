@@ -62,8 +62,8 @@ def all_functions_names(functions):
 
 def strip_value(val):
     value = str(val)
-    value = value.strip("")
-    value = value.strip()
+    value = value.strip('"')
+    value = value.strip('""')
     return value
 
 def convert_value(val, param_type):
@@ -91,7 +91,7 @@ def argument_is_finished(generated_text, param_type):
         return is_float(generated_text)
     if param_type == "boolean":
         return generated_text in ["true", "false"]
-    return generated_text.endswith('"')
+    return generated_text.endswith('", ') or generated_text.endswith('}') or generated_text.endswith('}}')
     
 
 
@@ -120,6 +120,7 @@ def generate_value(llm, full_prompt_paramaateres, param_type):
 
         if argument_is_finished(generated_text, param_type):
             break
+
  
     return (str(llm.decode(generated_tokens)).strip())
        
@@ -197,8 +198,9 @@ def main():
 
 
                 
-                #selected_function.parameters[key] = convert_value(generated_value, param_type)
-                #print(selected_function.to_json(prompt))
+                selected_function.parameters[key] = convert_value(generated_value, param_type)
+                print(selected_function.parameters[key])
+                
 
 
             
