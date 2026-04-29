@@ -2,9 +2,10 @@ from llm_sdk.llm_sdk import Small_LLM_Model
 from math import inf
 from .function import Function
 import json
+import os
 
 def big_prompt(prompt_str, functions_list) -> str:
-    prompt = "Available functions:\n"
+    prompt = "\n\nAvailable functions:\n"
     prompt += full_fn_list(functions_list)
     prompt += "Return name of the function:\n"
     prompt += "For example: \n"
@@ -16,7 +17,7 @@ def big_prompt(prompt_str, functions_list) -> str:
     return prompt
 
 def prompt_for_param(base_prompt, json_part, function):
-    prompt = "For this function:\n"
+    prompt = "\n\nFor this function:\n"
     prompt += function.fn_to_prompt()
     prompt += "\nReturn ONLY valid JSON in the format:\n"
     prompt += '{"prompt": "...", "name": "...", "parameters": { ... } }\n'
@@ -26,9 +27,9 @@ def prompt_for_param(base_prompt, json_part, function):
                '"name": "fn_add_numbers", "parameters": {"a": 2.0, "b": 3.0}}')
 
 
-    prompt += "\n\nUser: \""
+    prompt += "\n\nUser: "
     prompt += base_prompt
-    prompt += "\"\n"
+    prompt += "\n"
     prompt += "Output: "
     prompt += json_part
     
@@ -62,9 +63,10 @@ def all_functions_names(functions):
 
 def strip_value(val):
     value = str(val)
+    value = value.split('\n')[0]
     value = value.strip('"')
-    value = value.strip('""')
-    return value
+    value = value.strip("'")
+    return value.strip()
 
 def convert_value(val, param_type):
     value = strip_value(val)
@@ -91,21 +93,20 @@ def argument_is_finished(generated_text, param_type):
         return is_float(generated_text)
     if param_type == "boolean":
         return generated_text in ["true", "false"]
-    return generated_text.endswith('", ') or generated_text.endswith('}') or generated_text.endswith('}}')
-    
+    return any(c in generated_text for c in ['}', '"'])
 
 
 
 def generate_value(llm, full_prompt_paramaateres, param_type):
     tokens = llm.encode(full_prompt_paramaateres).tolist()[0]
 
-    max_tokens = 10
+    max_tokens = 25
     generated_tokens = []
 
 
     for _ in range(max_tokens):
         logits = llm.get_logits_from_input_ids(tokens + generated_tokens) 
-        print(llm.decode(tokens + generated_tokens))
+        #print(llm.decode(tokens + generated_tokens))
 
         max_logit = float(-inf)
         max_idx = -inf
@@ -117,12 +118,19 @@ def generate_value(llm, full_prompt_paramaateres, param_type):
         
         generated_tokens.append(max_idx)
         generated_text = str(llm.decode(generated_tokens))
+        print(generated_text)
+
 
         if argument_is_finished(generated_text, param_type):
             break
+    if param_type == 'string':
+        return(generated_text.split('"')[0])
+
+    
+    
 
  
-    return (str(llm.decode(generated_tokens)).strip())
+    return (generated_text)
        
 
 def main():
@@ -138,6 +146,8 @@ def main():
         for idx, data in enumerate(load_functions):
             function = Function.create_from_dict(data, idx)
             functions_list.append(function)
+
+        results = []
 
         for call in load_calls:
             prompt = call.get("prompt")
@@ -190,7 +200,7 @@ def main():
                 #print(key)
                 json_part = selected_function.to_json_parts(prompt, index)
                 full_prompt_paramaateres = prompt_for_param(prompt, json_part, selected_function)
-                #print(full_prompt_paramaateres)
+                print(full_prompt_paramaateres)
 
                 param_type = selected_function.parameters_type.get(key, "string")
                 generated_value = generate_value(llm, full_prompt_paramaateres, param_type)
@@ -199,9 +209,17 @@ def main():
 
                 
                 selected_function.parameters[key] = convert_value(generated_value, param_type)
-                print(selected_function.parameters[key])
-                
+                #print(selected_function.parameters[key])
+            results.append(selected_function.to_dict(prompt))
+            print (results)
 
+        os.makedirs("data/output", exist_ok=True)
+
+        with open("data/output/functions_calling_results.json", "w", encoding="utf-8") as output_file:
+                json.dump(results, output_file, indent=2)
+
+
+                
 
             
     except Exception as exc:

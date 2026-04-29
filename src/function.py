@@ -1,3 +1,4 @@
+from copy import copy
 import json
 class Function:
     def __init__(self,idx, name, prompt, description, parameters, parameters_type, returns):
@@ -18,8 +19,9 @@ class Function:
         for index, key in enumerate(params):
             if index <= idx:
                 params_str += f'"{key}": '
-            if types[key] == 'string':
-                params_str += '"'
+            if index == idx:
+                if types[key] == 'string':
+                    params_str += '"'
             if index < idx:
                 value = params[key]
                 params_str += f'"{value}", '
@@ -38,7 +40,7 @@ class Function:
         return{
             "prompt": prompt,
             "name": self.name,
-            "parameters": self.parameters
+            "parameters": copy(self.parameters)
             } 
 
     def return_names(self):
